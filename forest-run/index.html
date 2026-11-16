@@ -253,6 +253,8 @@ const RULES={
   barricadeHp:3,
   winGap:20, defGap:10, defWaves:3,
   baseHp:3,
+  waveRetreat:6,         // 웨이브 마지막 병사 등장 후 이 턴 수를 버티면 퇴각(저지 성공)
+  baseSpear:1,           // 스테이지 기본 아군 창병
 };
 const CELL=48, DIRS=[[1,0],[0,1],[-1,0],[0,-1]];
 const K=(c,r)=>c+','+r;
@@ -268,15 +270,15 @@ function vnoise(x,y,seed){const xi=Math.floor(x),yi=Math.floor(y),xf=x-xi,yf=y-y
 
 /* ================= DATA ================= */
 const EDEF={
-  scout:{name:'정찰병',ap:3,range:0,desc:'흔적을 따라 최단거리로 추격. 행동력 3을 이동 또는 흔적 파괴(길 만들기)에 씁니다. 겹친 칸에서만 공격.'},
-  inf:{name:'보병',ap:3,range:0,desc:'웨이브 병사. 만들어진 길로 행군합니다. 겹친 칸에서만 공격.'},
-  spear:{name:'창병',ap:3,range:1,desc:'웨이브 병사. 십자 1칸 거리에서 공격합니다.'},
-  archer:{name:'궁수',ap:2,range:2,desc:'웨이브 병사. 이동 2, 십자 2칸 거리에서 공격합니다.'},
+  scout:{name:'정찰병',ap:3,range:0,brk:true,desc:'흔적을 따라 최단거리로 추격. 행동력 3을 이동 또는 흔적 파괴(길 만들기)에 씁니다. 겹친 칸에서만 공격.'},
+  inf:{name:'보병',ap:3,range:0,desc:'웨이브 병사. 정찰병이 만든 길로만 행군하고 흔적은 부수지 못합니다. 겹친 칸에서만 공격.'},
+  spear:{name:'창병',ap:3,range:1,desc:'웨이브 병사. 길로만 행군. 십자 1칸 거리에서 공격합니다.'},
+  archer:{name:'궁수',ap:2,range:2,desc:'웨이브 병사. 길로만 행군, 이동 2. 십자 2칸 거리에서 공격합니다.'},
 };
 const TRAITS=[
   {id:'sprint',name:'질주',max:2,cost:1,desc:l=>`한 턴 이동 +1칸. (현재 ${RULES.playerMove+l}칸)`},
   {id:'trap',name:'덫 사냥꾼',max:3,cost:1,desc:l=>`스테이지마다 덫 +2. 밟은 병사는 쓰러지고, 정찰병은 2턴 묶입니다. (현재 ${2+2*l}개)`},
-  {id:'spear',name:'창병 고용',max:3,cost:1,desc:l=>`스테이지마다 아군 창병 +1. 십자 1칸 안의 적을 턴마다 1회 공격. (현재 ${l}명)`},
+  {id:'spear',name:'창병 고용',max:3,cost:1,desc:l=>`스테이지마다 아군 창병 +1. 십자 1칸 안의 적을 턴마다 1회 공격. (현재 ${RULES.baseSpear+l}명)`},
   {id:'archer',name:'궁수 고용',max:2,cost:2,desc:l=>`스테이지마다 아군 궁수 +1. 십자 2칸 안의 적을 턴마다 1회 공격. (현재 ${l}명)`},
   {id:'barricade',name:'벌목',max:2,cost:1,desc:l=>`스테이지마다 통나무 바리케이드 +1. 길·흔적 위에 놓으면 파괴 비용 +${RULES.barricadeHp}. (현재 ${l}개)`},
   {id:'tough',name:'강골',max:2,cost:1,desc:l=>`최대 체력 +1. (현재 ${RULES.baseHp+l})`},
@@ -307,7 +309,7 @@ let S=null, VC=12, camX=0, busy=false, place=null, smokeArmed=false, preview=nul
 const SURF=0;
 
 function baseStage(){return {terr:{},trail:{},barr:{},enemies:[],traps:{},units:{},turn:1,log:[],nextId:1,over:false,genCol:-1,
-  items:{trap:0,spear:0,archer:0,barricade:0,smoke:0},useTraits:false,waves:[],waveSpawned:0,blocked:0,nextWaveTurn:Infinity,spawnQ:[],kills:0}}
+  items:{trap:0,spear:0,archer:0,barricade:0,smoke:0},useTraits:false,waves:[],waveSpawned:0,blocked:0,nextWaveTurn:Infinity,spawnQ:[],waveInfo:{},kills:0}}
 
 function stageCfg(n){
   const T=(a)=>a.map(s=>s.split(' '));
@@ -361,7 +363,7 @@ function makeStage(id){
     addEnemy(S,'scout',0,3);
     S.goal={type:'gap',gap:RULES.winGap,def:RULES.defGap,waves:RULES.defWaves};
     S.waves=cfg.waves;S.nextWaveTurn=cfg.firstWave;
-    S.items={trap:2+2*lv('trap'),spear:lv('spear'),archer:lv('archer'),barricade:lv('barricade'),smoke:lv('smoke')};
+    S.items={trap:2+2*lv('trap'),spear:RULES.baseSpear+lv('spear'),archer:lv('archer'),barricade:lv('barricade'),smoke:lv('smoke')};
   }
   S.ap=moveMax(S);takeSnap(S);return S;
 }
@@ -420,7 +422,7 @@ function losRange(a,b,range){
   return true;
 }
 // Plan one enemy's turn on a given trail map (no side effects). Returns actions.
-function planEnemy(e,trail,maze){
+function planEnemy(e,trail,maze,occ){
   const def=EDEF[e.type],P=S.player;
   const field=costField(trail),route=routeOf(e,field,trail);
   let ap=def.ap,straight=false;
@@ -434,7 +436,8 @@ function planEnemy(e,trail,maze){
     const nx=route[i];if(!nx)break;
     if(nx.c===P.c&&nx.r===P.r){acts.push({t:'atk',c:pos.c,r:pos.r,melee:true});break}
     const k=K(nx.c,nx.r);
-    if(tr[k]>0){tr[k]--;ap--;acts.push({t:'brk',c:nx.c,r:nx.r,left:tr[k]});continue}
+    if(occ&&occ.has(k))break;               // single file: no passing other enemies
+    if(tr[k]>0){if(!def.brk)break;tr[k]--;ap--;acts.push({t:'brk',c:nx.c,r:nx.r,left:tr[k]});continue}
     ap--;pos={c:nx.c,r:nx.r};i++;acts.push({t:'mv',c:nx.c,r:nx.r,dir:nx.dir});
   }
   return {acts,straight,unreach:field.get(K(e.c,e.r))===undefined};
@@ -518,7 +521,8 @@ async function enemyPhase(){
   for(const e of order){
     if(!e.alive)continue;
     if(e.stun>0){e.stun--;continue}
-    const plan=planEnemy(e,Object.assign({},S.trail),maze);
+    const occ=new Set(S.enemies.filter(o=>o.alive&&o!==e).map(o=>K(o.c,o.r)));
+    const plan=planEnemy(e,Object.assign({},S.trail),maze,occ);
     for(const a of plan.acts){
       if(S.over||!e.alive)break;
       if(a.t==='atk'){hitPlayer(e);render();await sleep(STEP*2);break}
@@ -544,21 +548,23 @@ function spawnPoint(){
 }
 function postEnemy(){
   if(S.goal.type!=='gap')return;
-  // wave scheduling
-  if(S.turn>=S.nextWaveTurn&&S.spawnQ.length===0){
-    const idx=S.waveSpawned,tpl=S.waves[Math.min(idx,S.waves.length-1)];
+  const W=S.goal.waves;
+  if(S.waveSpawned<W&&S.turn>=S.nextWaveTurn&&S.spawnQ.length===0){
+    const tpl=S.waves[Math.min(S.waveSpawned,S.waves.length-1)];
     S.waveSpawned++;S.spawnQ=tpl.map(t=>({type:t,wave:S.waveSpawned}));
+    S.waveInfo[S.waveSpawned]={retreat:null,done:false};
     S.nextWaveTurn=S.turn+tpl.length+S.cfg.waveGap;
-    log(`웨이브 ${S.waveSpawned} 진군! 만들어진 길을 따라 ${tpl.length}명이 옵니다`);
+    log(`웨이브 ${S.waveSpawned}/${W} 진군! 정찰병이 낸 길로 ${tpl.length}명이 옵니다`);
   }
   if(S.spawnQ.length){const p=spawnPoint();if(p&&!enemyAt(p.c,p.r)){const s=S.spawnQ.shift();addEnemy(S,s.type,p.c,p.r,s.wave);fx(p.c,p.r,'hit')}}
-  // count blocked waves
-  let blocked=0;
   for(let w=1;w<=S.waveSpawned;w++){
-    const pending=S.spawnQ.some(s=>s.wave===w),alive=S.enemies.some(e=>e.alive&&e.wave===w);
-    if(!pending&&!alive)blocked++;
+    const info=S.waveInfo[w];if(info.done)continue;
+    if(S.spawnQ.some(s=>s.wave===w))continue;
+    if(info.retreat===null)info.retreat=S.turn+RULES.waveRetreat;
+    const alive=S.enemies.filter(e=>e.alive&&e.wave===w);
+    if(!alive.length){info.done=true;S.blocked++;log(`웨이브 ${w} 전멸 · 저지 성공 (${S.blocked}/${W})`)}
+    else if(S.turn>=info.retreat){alive.forEach(e=>{e.alive=false;e.gone=true});info.done=true;S.blocked++;log(`웨이브 ${w} 퇴각 · 버텨서 저지 성공 (${S.blocked}/${W})`)}
   }
-  if(blocked>S.blocked){S.blocked=blocked;log(`웨이브 ${blocked} 저지 성공 (${blocked}/${S.goal.waves})`)}
 }
 function gapInfo(){
   const cf=cellField(),sc=S.enemies.find(e=>e.alive&&e.type==='scout');
@@ -652,7 +658,7 @@ function showRules(){
       <li><b>적은 흔적과 길로만</b> 다닙니다. 플레이어까지의 최단 경로를 따라옵니다.</li>
       <li><b>행동력 ${RULES.enemyAP}</b> 적은 1을 써서 길 1칸을 이동하거나, 흔적 1칸을 파괴합니다. 파괴된 흔적은 <b>길</b>이 됩니다. 덤불 흔적은 파괴에 2가 듭니다.</li>
       <li><b>직진 보너스</b> 길이 직선으로 ${RULES.straightLen}칸 이어져 있으면 그 턴엔 ${RULES.straightLen}칸을 이동합니다. 굽은 길이 안전합니다.</li>
-      <li><b>정찰병</b>이 먼저 흔적을 베어 길을 만들고, <b>웨이브 병사</b>는 그 길로 옵니다. 이미 길이 된 칸은 파괴 비용이 없습니다.</li>
+      <li><b>정찰병</b>만 흔적을 베어 길을 만들고, <b>웨이브 병사</b>는 그 길로만 옵니다. 적은 한 줄로 움직여 서로 지나치지 못합니다.</li><li><b>웨이브</b>는 스테이지당 ${RULES.defWaves}번. 전멸시키거나, 마지막 병사가 나타난 뒤 ${RULES.waveRetreat}턴을 버티면 퇴각하며 저지 성공입니다.</li>
       <li><b>공격</b> 정찰병·보병은 겹친 칸(플레이어 칸으로 들어올 때)에서만 공격합니다. 창병은 십자 1칸, 궁수는 십자 2칸 거리에서 공격합니다. 바위는 사선을 막습니다.</li>
       <li><b>승리</b> 튜토리얼은 오른쪽 끝 도착. 3스테이지부터는 정찰병과의 간격 ${RULES.winGap}칸, 또는 간격 ${RULES.defGap}칸 이상인 상태에서 웨이브 ${RULES.defWaves}개 저지.</li>
       <li><b>특성</b> 튜토리얼마다 1포인트, 스테이지 클리어마다 1포인트. 3스테이지부터 특성 페이지를 쓸 수 있습니다. 런에서 쓰러지면 특성은 초기화됩니다.</li>
@@ -679,7 +685,7 @@ function intro(){
   else{
     const n=id,news=n===4?`<p><b>새 적: 창병</b> 십자 1칸 거리에서 공격합니다.</p>`:n===5?`<p><b>새 적: 궁수</b> 십자 2칸 거리에서 공격, 이동은 2칸입니다.</p>`:'';
     body=`<p>무한의 숲. 정찰병과의 간격을 <b>${RULES.winGap}칸</b> 벌리거나, 간격 <b>${RULES.defGap}칸</b> 이상을 지키며 웨이브 <b>${RULES.defWaves}개</b>를 막으면 승리합니다.</p>
-      <p>${S.cfg.firstWave}턴째부터 웨이브 병사가 정찰병이 낸 길로 옵니다. 덫과 아군 병사는 아래 버튼으로 배치하세요.</p>${news}
+      <p>${S.cfg.firstWave}턴째부터 웨이브 ${RULES.defWaves}번이 정찰병이 낸 길로 옵니다. 전멸시키거나 ${RULES.waveRetreat}턴을 버티면 퇴각합니다. 덫과 아군 병사는 아래 버튼으로 배치하세요.</p>${news}
       <p class="muted">시작 체력 ${S.player.maxHp} · 이동 ${moveMax(S)}칸 · 덫 ${S.items.trap} · 창병 ${S.items.spear} · 궁수 ${S.items.archer} · 바리케이드 ${S.items.barricade} · 연막 ${S.items.smoke}</p>`;
   }
   showCard(`<div class="eyebrow">${S.name}</div><h2>${S.sub}</h2>${body}<div class="row"><button class="btn primary" data-go="close" type="button">시작</button><button class="btn" data-go="menu" type="button">메뉴</button></div>`);
@@ -779,10 +785,12 @@ function computePreview(){
   if(smokeArmed)return {list:[],hit:false,smoke:true};
   const cf=costField();
   const order=S.enemies.filter(e=>e.alive).sort((a,b)=>(cf.get(K(a.c,a.r))??999)-(cf.get(K(b.c,b.r))??999));
-  let hit=false;
+  let hit=false;const pos=new Map(order.map(e=>[e.id,K(e.c,e.r)]));
   for(const e of order){
     if(e.stun>0){res.push({e,acts:[],stun:true});continue}
-    const p=planEnemy(e,trail,maze);res.push({e,acts:p.acts,straight:p.straight});
+    const occ=new Set([...pos].filter(([id])=>id!==e.id).map(([,k])=>k));
+    const p=planEnemy(e,trail,maze,occ);res.push({e,acts:p.acts,straight:p.straight});
+    for(const a of p.acts)if(a.t==='mv')pos.set(e.id,K(a.c,a.r));
     if(p.acts.some(a=>a.t==='atk'))hit=true;
   }
   return {list:res,hit};
@@ -862,8 +870,12 @@ function renderHud(){
     fill.style.width=Math.min(100,100*pg/G)+'%';ghost.style.width=Math.min(100,100*g/G)+'%';
     tick.hidden=false;tick.style.left=(100*S.goal.def/G)+'%';
     const aliveW=S.enemies.filter(e=>e.alive&&e.wave).length+S.spawnQ.length;
-    const nextW=S.spawnQ.length?'진군 중':(S.nextWaveTurn<Infinity?`${Math.max(0,S.nextWaveTurn-S.turn)}턴 후`:'');
-    $('#mSub').innerHTML=`웨이브 저지 <b>${S.blocked}</b> / ${S.goal.waves} · 남은 병사 ${aliveW} · 다음 웨이브 ${nextW} · 파란 눈금 = 디펜스 조건 ${S.goal.def}칸`;
+    let st;
+    const act=Object.entries(S.waveInfo).find(([,i])=>!i.done);
+    if(act){const [w,i]=act;st=i.retreat===null?`웨이브 ${w} 진군 중`:`웨이브 ${w} 퇴각까지 <b>${Math.max(0,i.retreat-S.turn)}</b>턴`}
+    else if(S.waveSpawned<S.goal.waves)st=`다음 웨이브 ${Math.max(0,S.nextWaveTurn-S.turn)}턴 후`;
+    else st='모든 웨이브 종료';
+    $('#mSub').innerHTML=`웨이브 저지 <b>${S.blocked}</b> / ${S.goal.waves} · ${st} · 남은 병사 ${aliveW} · 파란 눈금 = 디펜스 조건 ${S.goal.def}칸`;
   }
   // items
   const ib=$('#itemBtns');
