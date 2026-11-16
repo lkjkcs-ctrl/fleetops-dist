@@ -1,0 +1,930 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>숲길 도주</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* Layout: one-screen game cabinet. HUD strip, top-down night-forest board, action tray; a side rail (legend, log) on wide screens, stacked below on phones. Single committed night look. */
+:root{
+  --bg:#0f1512; --panel:#17201b; --panel-2:#1e2a23; --line:#2c3b32; --fg:#e8eadf; --muted:#9aa89c;
+  --floor:#1c2b20; --leaf:#2f4a33; --leaf-2:#3d5e40; --leaf-3:#24382a;
+  --thicket:#1a271d; --bramble:#5b6b3a;
+  --rock:#7a7f86; --rock-2:#555a61;
+  --trail:#5f6e4a; --print:#2a3524;
+  --road:#a07a4c; --road-2:#7f5d37;
+  --lamp:#f2b443; --ally:#86b4d8;
+  --scout:#e2553f; --inf:#c8463c; --spear:#e9853b; --archer:#d3609b;
+  --ok:#8fcf73; --warn:#f0c04a; --bad:#ff6b57;
+  --font-display:'Black Han Sans','Noto Sans KR','Apple SD Gothic Neo',sans-serif;
+  --font-body:'IBM Plex Sans KR','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{min-height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:14px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:14px 24px}
+button{font:inherit;color:inherit}
+.app{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:16px;align-items:start}
+@media (max-width:900px){.app{grid-template-columns:minmax(0,1fr)}}
+.main{min-width:0;display:flex;flex-direction:column;gap:10px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.logo{font-family:var(--font-display);font-size:26px;letter-spacing:.02em;color:var(--lamp)}
+.tag{color:var(--muted);font-size:12px;letter-spacing:.08em}
+.btn{border:1px solid var(--line);background:var(--panel-2);border-radius:8px;padding:8px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:background .15s,border-color .15s}
+.btn:hover:not(:disabled){border-color:var(--muted)}
+.btn:focus-visible{outline:2px solid var(--lamp);outline-offset:2px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.primary{background:var(--lamp);color:#1d1406;border-color:var(--lamp);font-weight:700}
+.btn.on{border-color:var(--lamp);box-shadow:inset 0 0 0 1px var(--lamp)}
+.btn kbd{font-family:var(--font-mono);font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.btn.primary kbd{color:#1d1406;border-color:#1d140655}
+.btn .n{font-family:var(--font-mono);font-weight:600}
+.hud{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+.hud .stage{display:flex;flex-direction:column;margin-right:auto;min-width:0}
+.hud .stage b{font-family:var(--font-display);font-size:18px;font-weight:400}
+.hud .stage span{color:var(--muted);font-size:12px}
+.stat{display:flex;align-items:center;gap:8px}
+.lbl{font-size:11px;color:var(--muted);letter-spacing:.08em}
+.stat b{font-family:var(--font-mono);font-size:16px;font-variant-numeric:tabular-nums}
+.pips{display:flex;gap:3px}
+.pip{width:12px;height:12px;border-radius:3px;background:var(--line)}
+.pip.on{background:var(--lamp)}
+.pip.hp{border-radius:50%}
+.pip.hp.on{background:var(--bad)}
+.meter{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;display:flex;flex-direction:column;gap:6px}
+.mrow{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px}
+.msub{font-size:12.5px}
+.msub b,.mrow b{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.warn{color:var(--bad);font-weight:700}
+.muted{color:var(--muted)}
+.bar{position:relative;height:10px;border-radius:5px;background:var(--panel-2);overflow:hidden}
+.bar .fill,.bar .ghost{position:absolute;left:0;top:0;bottom:0;border-radius:5px;transition:width .25s}
+.bar .ghost{background:color-mix(in srgb,var(--lamp) 30%,transparent)}
+.bar .fill{background:var(--lamp)}
+.bar .tick{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ally)}
+.boardwrap{position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:var(--floor)}
+.boardwrap.shake{animation:shake .35s}
+@keyframes shake{20%{transform:translateX(-6px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(2px)}}
+#board{display:block;width:100%;height:auto;touch-action:manipulation;user-select:none;-webkit-user-select:none;cursor:pointer}
+.toast{position:absolute;left:50%;top:10px;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:13px;pointer-events:none;opacity:0;transition:opacity .2s;max-width:calc(100% - 24px);text-align:center}
+.toast.show{opacity:1}
+.tray{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center}
+.tray .group{display:flex;flex-wrap:wrap;gap:6px}
+@media (max-width:520px){.tray{flex-direction:column;flex-wrap:nowrap;align-items:stretch}.tray .group{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr))}.tray .group:last-child{grid-template-columns:1fr 1.4fr}.tray .btn{justify-content:center}}
+.rail{display:flex;flex-direction:column;gap:12px;min-width:0}
+.rail section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.rail h3{margin:0 0 8px;font-size:11px;letter-spacing:.12em;color:var(--muted);font-weight:500}
+.legend{display:flex;flex-direction:column;gap:8px}
+.lg{display:grid;grid-template-columns:28px minmax(0,1fr);gap:8px;align-items:start;font-size:12.5px}
+.lg b{display:block;font-size:13px}
+.lg svg{width:28px;height:28px}
+#log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:12.5px;max-height:220px;overflow:auto}
+#log li{color:var(--muted)}
+#log li:first-child{color:var(--fg)}
+.keys{font-size:12.5px;color:var(--muted);display:grid;grid-template-columns:auto 1fr;gap:4px 10px}
+.keys kbd{font-family:var(--font-mono);font-size:11px;color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:0 5px;justify-self:start}
+/* modal */
+.modal{position:fixed;inset:0;z-index:20;background:color-mix(in srgb,var(--bg) 78%,transparent);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;overflow:auto;
+  padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px;max-width:640px;width:100%;display:flex;flex-direction:column;gap:14px;margin:auto}
+.card.wide{max-width:860px}
+.card h1{font-family:var(--font-display);font-weight:400;font-size:clamp(34px,7vw,54px);line-height:1.05;margin:0;color:var(--lamp);text-wrap:balance}
+.card h2{font-family:var(--font-display);font-weight:400;font-size:28px;margin:0;text-wrap:balance}
+.card p{margin:0;max-width:62ch}
+.eyebrow{font-size:11px;letter-spacing:.14em;color:var(--muted)}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+.menu-list{display:grid;gap:8px}
+.menu-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:center;text-align:left;border:1px solid var(--line);background:var(--panel-2);border-radius:10px;padding:12px 14px;cursor:pointer}
+.menu-item:hover:not(:disabled){border-color:var(--lamp)}
+.menu-item:focus-visible{outline:2px solid var(--lamp);outline-offset:2px}
+.menu-item:disabled{opacity:.45;cursor:not-allowed}
+.menu-item b{font-size:15px}
+.menu-item span{color:var(--muted);font-size:12.5px;grid-column:1}
+.menu-item em{grid-row:1/span 2;grid-column:2;font-style:normal;font-family:var(--font-mono);font-size:12px;color:var(--ok)}
+.rules{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:13.5px}
+.traits{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.trait{border:1px solid var(--line);background:var(--panel-2);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:6px}
+.trait .th{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.trait b{font-size:14.5px}
+.trait p{font-size:12.5px;color:var(--muted)}
+.trait .lv{display:flex;gap:3px}
+.trait .lv i{width:14px;height:5px;border-radius:2px;background:var(--line)}
+.trait .lv i.on{background:var(--lamp)}
+.trait .btn{align-self:flex-start;margin-top:auto}
+.points{font-family:var(--font-mono);font-size:15px}
+.points b{color:var(--lamp);font-size:20px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
+.stats div{background:var(--panel-2);border-radius:8px;padding:8px 10px}
+.stats b{display:block;font-family:var(--font-mono);font-size:20px}
+.stats span{font-size:11.5px;color:var(--muted)}
+/* svg classes */
+.floor{fill:var(--floor)}
+.leaf{fill:var(--leaf)} .leaf2{fill:var(--leaf-2)} .leaf3{fill:var(--leaf-3)}
+.thk{fill:var(--thicket)}
+.bram{stroke:var(--bramble);stroke-width:2;fill:none;stroke-linecap:round}
+.rk{fill:var(--rock-2)} .rk2{fill:var(--rock)}
+.trl{fill:var(--trail)}
+.prt{fill:var(--print)}
+.rd{fill:var(--road)} .rd2{stroke:var(--road-2);stroke-width:2;fill:none;stroke-linecap:round}
+.log1{fill:#7a5532;stroke:#3d2a17;stroke-width:1.5}
+.hpdot{fill:var(--warn)}
+.sky{fill:var(--leaf-3)}
+.goal{fill:var(--ok);opacity:.16}
+.goalline{stroke:var(--ok);stroke-width:3;stroke-dasharray:6 6}
+.mv{fill:color-mix(in srgb,var(--lamp) 14%,transparent);stroke:var(--lamp);stroke-width:2}
+.mvt{fill:var(--lamp);font:600 12px var(--font-mono);text-anchor:middle}
+.pl-ok{fill:color-mix(in srgb,var(--ally) 16%,transparent);stroke:var(--ally);stroke-width:2;stroke-dasharray:4 3}
+.pv{fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:2 6;opacity:.9}
+.pvdot{opacity:.9}
+.pvbrk{fill:none;stroke-width:2.5}
+.danger{fill:var(--bad);opacity:.13}
+.dangerline{fill:none;stroke:var(--bad);stroke-width:1.5;opacity:.5}
+.spawn{fill:none;stroke:var(--inf);stroke-width:2.5;stroke-dasharray:5 4}
+.offchip{fill:var(--panel);stroke:var(--line)}
+.offtxt{fill:var(--fg);font:600 12px var(--font-mono)}
+.ent{transition:transform .12s linear}
+.ent .zz{display:none;fill:var(--warn);font:700 13px var(--font-mono)}
+.ent.stun .zz{display:block}
+.ent.stun .body{opacity:.55}
+.ent.dead{opacity:0;transition:opacity .3s}
+.e-scout{fill:var(--scout)} .e-inf{fill:var(--inf)} .e-spear{fill:var(--spear)} .e-archer{fill:var(--archer)}
+.eye{fill:#fff3d6}
+.ink{stroke:#1b120c;stroke-width:2;fill:none;stroke-linecap:round}
+.ally{fill:var(--ally)}
+.allyink{stroke:#0e1a24;stroke-width:2;fill:none;stroke-linecap:round}
+.pl-body{fill:var(--lamp)}
+.pl-hood{fill:#3c4a2e}
+.trapc{fill:none;stroke:var(--ally);stroke-width:2.5}
+.trapt{fill:var(--ally)}
+.fx{transform-box:fill-box;transform-origin:center;animation:fx .6s ease-out forwards;fill:none;stroke-width:3}
+.fx.hit{stroke:var(--bad)} .fx.kill{stroke:var(--ally)} .fx.brk{stroke:var(--road)} .fx.stunfx{stroke:var(--warn)}
+@keyframes fx{from{transform:scale(.4);opacity:1}to{transform:scale(1.6);opacity:0}}
+.shot{stroke:var(--ally);stroke-width:2.5;stroke-linecap:round;animation:shot .4s ease-out forwards}
+.shot.enemy{stroke:var(--bad)}
+@keyframes shot{from{opacity:1}to{opacity:0}}
+@media (prefers-reduced-motion:reduce){.ent,.bar .fill,.bar .ghost{transition:none}.fx,.shot{animation-duration:.01s}.boardwrap.shake{animation:none}#world{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <main class="main">
+    <header class="top">
+      <div class="brand"><span class="logo">숲길 도주</span><span class="tag">추격 · 디펜스 · 로그라이트</span></div>
+      <div class="row">
+        <button class="btn" id="rulesBtn" type="button">규칙</button>
+        <button class="btn" id="menuBtn" type="button">메뉴</button>
+      </div>
+    </header>
+    <section class="hud" aria-label="상태">
+      <div class="stage"><b id="stName">-</b><span id="stSub"></span></div>
+      <div class="stat"><span class="lbl">턴</span><b id="turnNo">1</b></div>
+      <div class="stat"><span class="lbl">체력</span><span class="pips" id="hp"></span></div>
+      <div class="stat"><span class="lbl">이동</span><span class="pips" id="ap"></span></div>
+    </section>
+    <section class="meter" aria-live="polite">
+      <div class="mrow"><span id="mText"></span><span id="mPred"></span></div>
+      <div class="bar"><div class="ghost" id="mGhost"></div><div class="fill" id="mFill"></div><i class="tick" id="tickDef" hidden></i></div>
+      <div class="msub muted" id="mSub"></div>
+    </section>
+    <div class="boardwrap" id="bw">
+      <svg id="board" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="게임 보드">
+        <defs>
+          <radialGradient id="lampG" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="300">
+            <stop offset="0" stop-color="#f2b443" stop-opacity=".16"/>
+            <stop offset=".35" stop-color="#f2b443" stop-opacity=".04"/>
+            <stop offset=".6" stop-color="#05080a" stop-opacity="0"/>
+            <stop offset="1" stop-color="#05080a" stop-opacity=".5"/>
+          </radialGradient>
+        </defs>
+        <g id="world">
+          <g id="terrain"></g>
+          <g id="items"></g>
+          <rect id="dark" fill="url(#lampG)" pointer-events="none"/>
+          <g id="marks"></g>
+          <g id="ents"></g>
+          <g id="fxl"></g>
+        </g>
+        <g id="hudl"></g>
+      </svg>
+      <div class="toast" id="toast"></div>
+    </div>
+    <section class="tray">
+      <div class="group" id="itemBtns"></div>
+      <div class="group">
+        <button class="btn" id="undoBtn" type="button">되돌리기 <kbd>Z</kbd></button>
+        <button class="btn primary" id="endBtn" type="button">턴 종료 <kbd>Space</kbd></button>
+      </div>
+    </section>
+  </main>
+  <aside class="rail">
+    <section><h3>등장 유닛</h3><div class="legend" id="legend"></div></section>
+    <section><h3>기록</h3><ol id="log"></ol></section>
+    <section><h3>조작</h3>
+      <div class="keys">
+        <kbd>←↑↓→</kbd><span>이동 (WASD, 옆 칸 클릭도 가능)</span>
+        <kbd>Space</kbd><span>턴 종료</span>
+        <kbd>Z</kbd><span>이번 턴 되돌리기</span>
+        <kbd>1–5</kbd><span>아이템 선택 후 칸 클릭</span>
+        <kbd>Esc</kbd><span>배치 취소</span>
+      </div>
+    </section>
+  </aside>
+</div>
+<div class="modal" id="modal" hidden><div class="card" id="card" role="dialog" aria-modal="true"></div></div>
+
+<script>
+(()=>{
+'use strict';
+/* ================= RULES (tunable) ================= */
+const RULES={
+  playerMove:3,          // 유저 기본 이동 칸
+  enemyAP:3,             // 적 기본 행동력 (이동 1칸 또는 파괴 1)
+  straightLen:4,         // 직진 보너스 조건: 길(road)로 직선 4칸 연결
+  trailHp:{forest:1,thicket:2}, // 흔적 칸을 길로 만드는 파괴 비용
+  thicketMoveCost:2,     // 유저가 덤불을 지나는 비용
+  barricadeHp:3,
+  winGap:20, defGap:10, defWaves:3,
+  baseHp:3,
+};
+const CELL=48, DIRS=[[1,0],[0,1],[-1,0],[0,-1]];
+const K=(c,r)=>c+','+r;
+const $=s=>document.querySelector(s);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const STEP=RM?30:115;
+
+function hash2(c,r,seed){let h=(seed|0)^Math.imul(c|0,374761393)^Math.imul(r|0,668265263);h=Math.imul(h^h>>>13,1274126177);h^=h>>>16;return (h>>>0)/4294967296}
+function vnoise(x,y,seed){const xi=Math.floor(x),yi=Math.floor(y),xf=x-xi,yf=y-yi,s=t=>t*t*(3-2*t);
+  const a=hash2(xi,yi,seed),b=hash2(xi+1,yi,seed),c=hash2(xi,yi+1,seed),d=hash2(xi+1,yi+1,seed),u=s(xf),v=s(yf);
+  return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v}
+
+/* ================= DATA ================= */
+const EDEF={
+  scout:{name:'정찰병',ap:3,range:0,desc:'흔적을 따라 최단거리로 추격. 행동력 3을 이동 또는 흔적 파괴(길 만들기)에 씁니다. 겹친 칸에서만 공격.'},
+  inf:{name:'보병',ap:3,range:0,desc:'웨이브 병사. 만들어진 길로 행군합니다. 겹친 칸에서만 공격.'},
+  spear:{name:'창병',ap:3,range:1,desc:'웨이브 병사. 십자 1칸 거리에서 공격합니다.'},
+  archer:{name:'궁수',ap:2,range:2,desc:'웨이브 병사. 이동 2, 십자 2칸 거리에서 공격합니다.'},
+};
+const TRAITS=[
+  {id:'sprint',name:'질주',max:2,cost:1,desc:l=>`한 턴 이동 +1칸. (현재 ${RULES.playerMove+l}칸)`},
+  {id:'trap',name:'덫 사냥꾼',max:3,cost:1,desc:l=>`스테이지마다 덫 +2. 밟은 병사는 쓰러지고, 정찰병은 2턴 묶입니다. (현재 ${2+2*l}개)`},
+  {id:'spear',name:'창병 고용',max:3,cost:1,desc:l=>`스테이지마다 아군 창병 +1. 십자 1칸 안의 적을 턴마다 1회 공격. (현재 ${l}명)`},
+  {id:'archer',name:'궁수 고용',max:2,cost:2,desc:l=>`스테이지마다 아군 궁수 +1. 십자 2칸 안의 적을 턴마다 1회 공격. (현재 ${l}명)`},
+  {id:'barricade',name:'벌목',max:2,cost:1,desc:l=>`스테이지마다 통나무 바리케이드 +1. 길·흔적 위에 놓으면 파괴 비용 +${RULES.barricadeHp}. (현재 ${l}개)`},
+  {id:'tough',name:'강골',max:2,cost:1,desc:l=>`최대 체력 +1. (현재 ${RULES.baseHp+l})`},
+  {id:'zigzag',name:'갈지자 걸음',max:1,cost:2,desc:()=>`적이 직진 4칸 보너스를 얻지 못합니다.`},
+  {id:'machete',name:'정글도',max:1,cost:1,desc:()=>`덤불 이동 비용 ${RULES.thicketMoveCost} → 1.`},
+  {id:'smoke',name:'연막',max:2,cost:1,desc:l=>`스테이지마다 연막 +1. 적의 한 턴을 통째로 멈춥니다. (현재 ${l}개)`},
+];
+const ITEMS=[
+  {id:'trap',name:'덫',key:'1',hint:'흔적이나 길 위에 설치'},
+  {id:'spear',name:'창병',key:'2',hint:'바위가 아닌 빈 칸에 배치 (사거리 십자 1)'},
+  {id:'archer',name:'궁수',key:'3',hint:'바위가 아닌 빈 칸에 배치 (사거리 십자 2)'},
+  {id:'barricade',name:'바리케이드',key:'4',hint:'흔적이나 길 위에 설치'},
+  {id:'smoke',name:'연막',key:'5',hint:'이번 적 턴을 건너뜁니다'},
+];
+
+/* ================= META / RUN ================= */
+const META_KEY='forest-run-meta-v1';
+let meta={t1:false,t2:false,best:0};
+try{const m=JSON.parse(localStorage.getItem(META_KEY)||'null');if(m)meta=Object.assign(meta,m)}catch(e){}
+function saveMeta(){try{localStorage.setItem(META_KEY,JSON.stringify(meta))}catch(e){}}
+let run=null;
+function newRun(){run={stage:3,points:(meta.t1?1:0)+(meta.t2?1:0),traits:{},turns:0,cleared:0,kills:0}}
+const lv=id=>(S&&S.useTraits&&run)?(run.traits[id]||0):0;
+const rlv=id=>run?(run.traits[id]||0):0;
+
+/* ================= STAGE ================= */
+let S=null, VC=12, camX=0, busy=false, place=null, smokeArmed=false, preview=null;
+const SURF=0;
+
+function baseStage(){return {terr:{},trail:{},barr:{},enemies:[],traps:{},units:{},turn:1,log:[],nextId:1,over:false,genCol:-1,
+  items:{trap:0,spear:0,archer:0,barricade:0,smoke:0},useTraits:false,waves:[],waveSpawned:0,blocked:0,nextWaveTurn:Infinity,spawnQ:[],kills:0}}
+
+function stageCfg(n){
+  const T=(a)=>a.map(s=>s.split(' '));
+  let waves;
+  if(n===3) waves=T(['inf inf','inf inf inf','inf inf inf']);
+  else if(n===4) waves=T(['inf spear','inf spear inf','spear inf spear inf']);
+  else if(n===5) waves=T(['inf archer spear','spear archer inf inf','archer spear inf archer']);
+  else {const extra=Math.min(4,n-5);waves=T(['spear archer inf'+' inf'.repeat(extra>1?1:0),'archer spear inf spear'+' inf'.repeat(extra>2?1:0),'archer archer spear spear inf'+' inf'.repeat(extra>3?1:0)]);}
+  const sub=n===3?'첫 정식 추격':n===4?'창병 등장':n===5?'궁수 등장':'깊은 숲';
+  return {waves,sub,firstWave:n===3?4:3,waveGap:n>=6?3:4,rockT:Math.max(.64,.74-.02*(n-3)),thkT:Math.max(.5,.6-.02*(n-3))};
+}
+
+function genColumn(S,c){
+  const cf=S.cfg, rows=S.rows, col=[];
+  for(let r=0;r<rows;r++){
+    let t='forest';
+    if(c>=6){
+      const rn=vnoise(c*.38,r*.62,S.seed+7), tn=vnoise(c*.21,r*.45,S.seed+13);
+      if(rn>cf.rockT||hash2(c,r,S.seed+3)<.035) t='rock'; else if(tn>cf.thkT) t='thicket';
+    }
+    col.push(t);
+  }
+  let rocks=col.map((t,r)=>t==='rock'?r:-1).filter(r=>r>=0);
+  while(rocks.length>rows-3){const i=Math.floor(hash2(c,rocks.length,S.seed+5)*rocks.length);col[rocks[i]]='thicket';rocks.splice(i,1)}
+  col.forEach((t,r)=>{S.terr[K(c,r)]=t});
+  S.genCol=c;
+}
+function ensureCols(S,upto){if(S.cols!==Infinity)return;while(S.genCol<upto)genColumn(S,S.genCol+1)}
+function addEnemy(S,type,c,r,wave){const e={id:S.nextId++,type,c,r,stun:0,lastDir:0,alive:true,wave:wave||0};S.enemies.push(e);return e}
+
+function makeStage(id){
+  const S=baseStage();S.id=id;
+  if(id==='t1'){
+    Object.assign(S,{name:'튜토리얼 1',sub:'첫 걸음',rows:1,cols:7});
+    for(let c=0;c<7;c++)S.terr[K(c,0)]='forest';
+    S.terr[K(0,0)]='road';S.genCol=6;
+    S.player={c:0,r:0,hp:1,maxHp:1};S.goal={type:'reach',col:6,maxTurns:2};
+  }else if(id==='t2'){
+    Object.assign(S,{name:'튜토리얼 2',sub:'따라오는 정찰병',rows:5,cols:10});
+    const L=['......#...','...#..#...','RT.#..#...','...#.t....','....tt..#.'];
+    L.forEach((row,r)=>[...row].forEach((ch,c)=>{S.terr[K(c,r)]=ch==='#'?'rock':ch==='t'?'thicket':ch==='R'?'road':'forest';if(ch==='T')S.trail[K(c,r)]=1}));
+    S.genCol=9;S.player={c:1,r:2,hp:1,maxHp:1};addEnemy(S,'scout',0,2);S.goal={type:'reach',col:9};
+  }else{
+    const n=id,cfg=stageCfg(n);
+    Object.assign(S,{name:`${n}스테이지`,sub:cfg.sub,rows:7,cols:Infinity,seed:(Math.random()*2147483647)|0,cfg,useTraits:true});
+    ensureCols(S,40);
+    for(let c=0;c<=2;c++)S.terr[K(c,3)]='road';
+    S.trail[K(3,3)]=1;
+    const hp=RULES.baseHp+lv('tough');
+    S.player={c:3,r:3,hp,maxHp:hp};
+    addEnemy(S,'scout',0,3);
+    S.goal={type:'gap',gap:RULES.winGap,def:RULES.defGap,waves:RULES.defWaves};
+    S.waves=cfg.waves;S.nextWaveTurn=cfg.firstWave;
+    S.items={trap:2+2*lv('trap'),spear:lv('spear'),archer:lv('archer'),barricade:lv('barricade'),smoke:lv('smoke')};
+  }
+  S.ap=moveMax(S);takeSnap(S);return S;
+}
+const moveMax=S=>RULES.playerMove+(S.useTraits&&run?(run.traits.sprint||0):0);
+const thkCost=()=>lv('machete')?1:RULES.thicketMoveCost;
+
+function inB(c,r){return S&&r>=0&&r<S.rows&&c>=0&&c<S.cols&&c<=S.genCol}
+function terr(c,r){if(!S||r<0||r>=S.rows||c<0||c>=S.cols)return null;if(c>S.genCol)ensureCols(S,c+5);return S.terr[K(c,r)]}
+const isGraph=(c,r,trail)=>{const k=K(c,r);return S.terr[k]==='road'||(trail||S.trail)[k]>0};
+const trailHp=(k,trail)=>(trail||S.trail)[k]||0;
+const enemyAt=(c,r)=>S.enemies.find(e=>e.alive&&e.c===c&&e.r===r);
+
+function takeSnap(S){S.snap=JSON.stringify({player:S.player,terr:S.terr,trail:S.trail,barr:S.barr,traps:S.traps,units:S.units,items:S.items,ap:S.ap,genCol:S.genCol})}
+function undo(){if(busy||!S||S.over)return;Object.assign(S,JSON.parse(S.snap));place=null;smokeArmed=false;render();toast('이번 턴을 처음 상태로 되돌렸어요')}
+
+/* ================= PATHING ================= */
+// Dijkstra from the player over trail∪road. dist[n] = cost for an enemy at n to reach the player.
+// Entering a cell costs (remaining trail hp) + 1. Entering the player's cell = attack (cost 1).
+function costField(trail){
+  const P=S.player, dist=new Map(), pk=K(P.c,P.r);
+  dist.set(pk,0);
+  const heap=[[0,P.c,P.r]];
+  const push=(it)=>{heap.push(it);let i=heap.length-1;while(i>0){const p=(i-1)>>1;if(heap[p][0]<=heap[i][0])break;[heap[p],heap[i]]=[heap[i],heap[p]];i=p}};
+  const pop=()=>{const top=heap[0],last=heap.pop();if(heap.length){heap[0]=last;let i=0;for(;;){const l=2*i+1,r=l+1;let m=i;if(l<heap.length&&heap[l][0]<heap[m][0])m=l;if(r<heap.length&&heap[r][0]<heap[m][0])m=r;if(m===i)break;[heap[m],heap[i]]=[heap[i],heap[m]];i=m}}return top};
+  while(heap.length){
+    const [d,c,r]=pop(),k=K(c,r);if(d>dist.get(k))continue;
+    const enter=(c===P.c&&r===P.r)?1:trailHp(k,trail)+1;
+    for(const [dx,dy] of DIRS){const nc=c+dx,nr=r+dy;if(!inB(nc,nr)||!isGraph(nc,nr,trail))continue;const nk=K(nc,nr),nd=d+enter;
+      if(!dist.has(nk)||nd<dist.get(nk)){dist.set(nk,nd);push([nd,nc,nr])}}
+  }
+  return dist;
+}
+function cellField(){ // plain BFS cell count over graph, for the gap readout
+  const P=S.player,dist=new Map([[K(P.c,P.r),0]]),q=[[P.c,P.r]];
+  for(let i=0;i<q.length;i++){const [c,r]=q[i],d=dist.get(K(c,r));for(const [dx,dy] of DIRS){const nc=c+dx,nr=r+dy,nk=K(nc,nr);if(!inB(nc,nr)||dist.has(nk)||!isGraph(nc,nr))continue;dist.set(nk,d+1);q.push([nc,nr])}}
+  return dist;
+}
+// cheapest route from e to the player, as a list of cells (last = player cell)
+function routeOf(e,field,trail){
+  const out=[];let c=e.c,r=e.r,pref=e.lastDir,guard=0;
+  let d=field.get(K(c,r));if(d===undefined)return out;
+  while(d>0&&guard++<400){
+    let pick=-1;const order=[pref,0,1,2,3];
+    for(const di of order){const nc=c+DIRS[di][0],nr=r+DIRS[di][1],nk=K(nc,nr);const nd=field.get(nk);if(nd===undefined)continue;
+      const enter=(nc===S.player.c&&nr===S.player.r)?1:trailHp(nk,trail)+1;if(nd+enter===d){pick=di;break}}
+    if(pick<0)break;c+=DIRS[pick][0];r+=DIRS[pick][1];out.push({c,r,dir:pick});pref=pick;d=field.get(K(c,r));
+  }
+  return out;
+}
+function losRange(a,b,range){
+  if(range<=0)return false;
+  if(a.c!==b.c&&a.r!==b.r)return false;
+  const dist=Math.abs(a.c-b.c)+Math.abs(a.r-b.r);if(dist===0||dist>range)return false;
+  const dx=Math.sign(b.c-a.c),dy=Math.sign(b.r-a.r);
+  for(let i=1;i<dist;i++){if(terr(a.c+dx*i,a.r+dy*i)==='rock')return false}
+  return true;
+}
+// Plan one enemy's turn on a given trail map (no side effects). Returns actions.
+function planEnemy(e,trail,maze){
+  const def=EDEF[e.type],P=S.player;
+  const field=costField(trail),route=routeOf(e,field,trail);
+  let ap=def.ap,straight=false;
+  if(!maze&&route.length>=RULES.straightLen){
+    const seg=route.slice(0,RULES.straightLen);
+    if(seg.every(s=>s.dir===seg[0].dir)&&seg.every(s=>(s.c===P.c&&s.r===P.r)||trailHp(K(s.c,s.r),trail)===0)){ap=Math.max(ap,RULES.straightLen);straight=true}
+  }
+  const acts=[];let pos={c:e.c,r:e.r},i=0;const tr=trail;
+  while(ap>0){
+    if(losRange(pos,P,def.range)){acts.push({t:'atk',c:pos.c,r:pos.r});break}
+    const nx=route[i];if(!nx)break;
+    if(nx.c===P.c&&nx.r===P.r){acts.push({t:'atk',c:pos.c,r:pos.r,melee:true});break}
+    const k=K(nx.c,nx.r);
+    if(tr[k]>0){tr[k]--;ap--;acts.push({t:'brk',c:nx.c,r:nx.r,left:tr[k]});continue}
+    ap--;pos={c:nx.c,r:nx.r};i++;acts.push({t:'mv',c:nx.c,r:nx.r,dir:nx.dir});
+  }
+  return {acts,straight,unreach:field.get(K(e.c,e.r))===undefined};
+}
+
+/* ================= PLAYER ACTIONS ================= */
+function tryStep(di){
+  if(busy||!S||S.over||!modal.hidden)return;
+  if(place){place=null}
+  const P=S.player,nc=P.c+DIRS[di][0],nr=P.r+DIRS[di][1],t=terr(nc,nr);
+  if(t===null){toast('지도 밖으로는 갈 수 없어요');return}
+  if(t==='rock'){toast('바위는 지날 수 없어요');return}
+  if(enemyAt(nc,nr)){toast('적이 있는 칸으로는 갈 수 없어요');return}
+  const k=K(nc,nr),onPath=t==='road'||S.trail[k]>0;
+  const cost=(!onPath&&t==='thicket')?thkCost():1;
+  if(cost>S.ap){toast(S.ap>0?`덤불은 ${cost}칸 몫이 필요해요`:'이번 턴 이동을 다 썼어요. 턴을 종료하세요');return}
+  S.ap-=cost;P.c=nc;P.r=nr;
+  if(t!=='road'&&!(S.trail[k]>0))S.trail[k]=RULES.trailHp[t==='thicket'?'thicket':'forest'];
+  ensureCols(S,P.c+30);
+  render();
+  if(S.goal.type==='reach'&&P.c>=S.goal.col){win('reach')}
+}
+function canPlace(id,c,r){
+  const t=terr(c,r);if(!t||t==='rock')return false;
+  const k=K(c,r),P=S.player;
+  if(c===P.c&&r===P.r)return false;if(enemyAt(c,r))return false;
+  if(c<Math.floor(camX)||c>Math.floor(camX)+VC)return false;
+  if(id==='trap')return isGraph(c,r)&&!S.traps[k]&&!S.units[k];
+  if(id==='barricade')return isGraph(c,r)&&!S.barr[k];
+  if(id==='spear'||id==='archer')return !S.units[k]&&!S.traps[k];
+  return false;
+}
+function doPlace(c,r){
+  const id=place,k=K(c,r);
+  if(!canPlace(id,c,r)){toast(ITEMS.find(i=>i.id===id).hint);return}
+  S.items[id]--;
+  if(id==='trap')S.traps[k]=1;
+  else if(id==='barricade'){S.barr[k]=1;S.trail[k]=(S.trail[k]||0)+RULES.barricadeHp}
+  else S.units[k]={type:id,range:id==='spear'?1:2};
+  if(S.items[id]<=0)place=null;
+  render();
+}
+function selectItem(id){
+  if(busy||!S||S.over||!S.useTraits)return;
+  if(id==='smoke'){if(S.items.smoke<=0&&!smokeArmed)return;smokeArmed=!smokeArmed;toast(smokeArmed?'연막 준비: 이번 턴 종료 시 적이 움직이지 않습니다':'연막 취소');render();return}
+  if(S.items[id]<=0){toast('남은 수량이 없어요');return}
+  place=place===id?null:id;if(place)toast(ITEMS.find(i=>i.id===id).hint);render();
+}
+
+/* ================= ENEMY TURN ================= */
+function log(msg){S.log.unshift(msg);if(S.log.length>40)S.log.pop();renderLog()}
+function fx(c,r,kind){const el=document.createElementNS('http://www.w3.org/2000/svg','circle');el.setAttribute('cx',c*CELL+24);el.setAttribute('cy',r*CELL+24);el.setAttribute('r',18);el.setAttribute('class','fx '+kind);$('#fxl').appendChild(el);setTimeout(()=>el.remove(),700)}
+function shot(a,b,enemy){const el=document.createElementNS('http://www.w3.org/2000/svg','line');el.setAttribute('x1',a.c*CELL+24);el.setAttribute('y1',a.r*CELL+24);el.setAttribute('x2',b.c*CELL+24);el.setAttribute('y2',b.r*CELL+24);el.setAttribute('class','shot'+(enemy?' enemy':''));$('#fxl').appendChild(el);setTimeout(()=>el.remove(),450)}
+function kill(e,why){e.alive=false;S.kills++;if(run&&S.useTraits)run.kills++;fx(e.c,e.r,'kill');log(`${EDEF[e.type].name} 처치 (${why})`)}
+
+function hitPlayer(e){
+  const P=S.player;P.hp--;fx(P.c,P.r,'hit');
+  if(EDEF[e.type].range>0)shot(e,P,true);
+  const bw=$('#bw');bw.classList.remove('shake');void bw.offsetWidth;bw.classList.add('shake');
+  log(`${EDEF[e.type].name}에게 공격당했습니다! 체력 ${Math.max(0,P.hp)}`);
+  if(e.type==='scout')e.stun=1;
+  if(P.hp<=0){lose(`${EDEF[e.type].name}에게 쓰러졌습니다`)}
+}
+// allied units: one shot per enemy turn, at the first enemy that enters their cross range
+function towersReact(e){
+  for(const [k,u] of Object.entries(S.units)){
+    if(u.fired||!e.alive)continue;const [c,r]=k.split(',').map(Number);
+    if(losRange({c,r},e,u.range)){u.fired=true;shot({c,r},e,false);
+      if(e.type==='scout'){e.stun=Math.max(e.stun,1);fx(e.c,e.r,'stunfx');log(`아군 ${u.type==='spear'?'창병':'궁수'}이 정찰병을 묶었습니다 (1턴)`);return true}
+      kill(e,`아군 ${u.type==='spear'?'창병':'궁수'}`);return true}
+  }
+  return false;
+}
+async function enemyPhase(){
+  for(const u of Object.values(S.units))u.fired=false;
+  // towers also fire at enemies already standing in range at the start
+  for(const e of S.enemies){if(e.alive)towersReact(e)}
+  const cf=costField();
+  const order=S.enemies.filter(e=>e.alive).sort((a,b)=>(cf.get(K(a.c,a.r))??999)-(cf.get(K(b.c,b.r))??999));
+  const maze=lv('zigzag')>0;
+  for(const e of order){
+    if(!e.alive)continue;
+    if(e.stun>0){e.stun--;continue}
+    const plan=planEnemy(e,Object.assign({},S.trail),maze);
+    for(const a of plan.acts){
+      if(S.over||!e.alive)break;
+      if(a.t==='atk'){hitPlayer(e);render();await sleep(STEP*2);break}
+      if(a.t==='brk'){const k=K(a.c,a.r);S.trail[k]=Math.max(0,(S.trail[k]||0)-1);
+        if(S.trail[k]===0){delete S.trail[k];S.terr[k]='road';if(S.barr[k]){delete S.barr[k]}}
+        fx(a.c,a.r,'brk');render();await sleep(STEP);continue}
+      e.c=a.c;e.r=a.r;e.lastDir=a.dir;render();await sleep(STEP);
+      const k=K(e.c,e.r);
+      if(S.traps[k]){delete S.traps[k];
+        if(e.type==='scout'){e.stun=2;fx(e.c,e.r,'stunfx');log('정찰병이 덫에 걸렸습니다 (2턴)')}else kill(e,'덫');
+        render();break}
+      if(towersReact(e)){render();await sleep(STEP);break}
+    }
+    if(S.over)return;
+  }
+}
+function spawnPoint(){
+  const cf=cellField(),sc=S.enemies.find(e=>e.alive&&e.type==='scout');
+  const sd=sc?(cf.get(K(sc.c,sc.r))??0):0,target=sd+4;
+  let best=null,bd=1e9;
+  for(const [k,d] of cf){if(S.terr[k]!=='road')continue;const [c,r]=k.split(',').map(Number);if(enemyAt(c,r))continue;const sc2=Math.abs(d-target)+(d<sd?50:0);if(sc2<bd){bd=sc2;best={c,r}}}
+  return best||(sc?{c:sc.c,r:sc.r}:{c:0,r:3});
+}
+function postEnemy(){
+  if(S.goal.type!=='gap')return;
+  // wave scheduling
+  if(S.turn>=S.nextWaveTurn&&S.spawnQ.length===0){
+    const idx=S.waveSpawned,tpl=S.waves[Math.min(idx,S.waves.length-1)];
+    S.waveSpawned++;S.spawnQ=tpl.map(t=>({type:t,wave:S.waveSpawned}));
+    S.nextWaveTurn=S.turn+tpl.length+S.cfg.waveGap;
+    log(`웨이브 ${S.waveSpawned} 진군! 만들어진 길을 따라 ${tpl.length}명이 옵니다`);
+  }
+  if(S.spawnQ.length){const p=spawnPoint();if(p&&!enemyAt(p.c,p.r)){const s=S.spawnQ.shift();addEnemy(S,s.type,p.c,p.r,s.wave);fx(p.c,p.r,'hit')}}
+  // count blocked waves
+  let blocked=0;
+  for(let w=1;w<=S.waveSpawned;w++){
+    const pending=S.spawnQ.some(s=>s.wave===w),alive=S.enemies.some(e=>e.alive&&e.wave===w);
+    if(!pending&&!alive)blocked++;
+  }
+  if(blocked>S.blocked){S.blocked=blocked;log(`웨이브 ${blocked} 저지 성공 (${blocked}/${S.goal.waves})`)}
+}
+function gapInfo(){
+  const cf=cellField(),sc=S.enemies.find(e=>e.alive&&e.type==='scout');
+  if(!sc)return {gap:Infinity};
+  return {gap:cf.get(K(sc.c,sc.r))??Infinity};
+}
+async function endTurn(){
+  if(busy||!S||S.over||!modal.hidden)return;
+  busy=true;place=null;render();
+  if(smokeArmed){S.items.smoke--;smokeArmed=false;log('연막! 적이 이번 턴 움직이지 못했습니다')}
+  else await enemyPhase();
+  if(S.over){busy=false;render();return}
+  postEnemy();
+  if(S.goal.type==='gap'){
+    const g=gapInfo().gap;
+    if(g>=S.goal.gap){busy=false;win('gap');return}
+    if(S.blocked>=S.goal.waves&&g>=S.goal.def){busy=false;win('def');return}
+  }
+  S.turn++;if(run&&S.useTraits)run.turns++;
+  if(S.goal.maxTurns&&S.turn>S.goal.maxTurns){busy=false;lose('제한 턴 안에 도착하지 못했습니다');return}
+  S.ap=moveMax(S);takeSnap(S);busy=false;render();
+}
+
+/* ================= WIN / LOSE ================= */
+function win(reason){
+  S.over=true;render();
+  setTimeout(()=>{
+    if(S.id==='t1'||S.id==='t2'){
+      const first=!meta[S.id];meta[S.id]=true;saveMeta();
+      const nextBtn=S.id==='t1'?`<button class="btn primary" data-go="t2" type="button">튜토리얼 2로</button>`:`<button class="btn primary" data-go="run" type="button">3스테이지 시작</button>`;
+      showCard(`<div class="eyebrow">${S.name} 클리어</div><h2>${S.id==='t1'?'길이 남았습니다':'정찰병을 따돌렸습니다'}</h2>
+        <p>${first?'특성 포인트 <b>+1</b>을 얻었습니다. 3스테이지부터 특성 페이지에서 사용할 수 있어요.':'이미 이 튜토리얼의 특성 포인트를 받았습니다.'}</p>
+        <div class="row">${nextBtn}<button class="btn" data-go="menu" type="button">메뉴</button></div>`);
+      return;
+    }
+    run.points++;run.cleared++;const cleared=run.stage;run.stage++;meta.best=Math.max(meta.best,cleared);saveMeta();
+    showCard(`<div class="eyebrow">${cleared}스테이지 클리어</div><h2>${reason==='def'?'웨이브를 막아냈습니다':'숲 깊이 사라졌습니다'}</h2>
+      <p>${reason==='def'?`간격 ${RULES.defGap}칸 이상을 지킨 채 웨이브 ${RULES.defWaves}개를 저지했습니다.`:`정찰병과의 간격을 ${RULES.winGap}칸 벌렸습니다.`} 특성 포인트 <b>+1</b>.</p>
+      <div class="stats"><div><b>${S.turn}</b><span>사용한 턴</span></div><div><b>${S.kills}</b><span>처치</span></div><div><b>${run.points}</b><span>보유 포인트</span></div></div>
+      <div class="row"><button class="btn primary" data-go="traits" type="button">특성 찍고 ${run.stage}스테이지로</button><button class="btn" data-go="menu" type="button">메뉴</button></div>`);
+  },RM?50:500);
+}
+function lose(why){
+  S.over=true;render();
+  setTimeout(()=>{
+    if(S.id==='t1'||S.id==='t2'){
+      showCard(`<div class="eyebrow">${S.name}</div><h2>다시 해볼까요</h2><p>${why}.</p>
+        <div class="row"><button class="btn primary" data-go="${S.id}" type="button">다시 하기</button><button class="btn" data-go="menu" type="button">메뉴</button></div>`);return;
+    }
+    const st=run.stage,cl=run.cleared,tt=run.turns,kk=run.kills;meta.best=Math.max(meta.best,cl+2);saveMeta();run=null;
+    showCard(`<div class="eyebrow">런 종료 · ${st}스테이지</div><h2>${why}</h2>
+      <p>로그라이트 규칙에 따라 찍은 특성은 사라지고, 다음 런은 3스테이지에서 튜토리얼 포인트만 가지고 다시 시작합니다.</p>
+      <div class="stats"><div><b>${cl}</b><span>클리어한 스테이지</span></div><div><b>${tt}</b><span>총 턴</span></div><div><b>${kk}</b><span>처치</span></div><div><b>${meta.best||'-'}</b><span>최고 도달 스테이지</span></div></div>
+      <div class="row"><button class="btn primary" data-go="run" type="button">새 런 시작</button><button class="btn" data-go="menu" type="button">메뉴</button></div>`);
+  },RM?50:650);
+}
+
+/* ================= SCREENS ================= */
+const modal=$('#modal'),card=$('#card');
+function showCard(html,wide){card.className='card'+(wide?' wide':'');card.innerHTML=html;modal.hidden=false;const f=card.querySelector('.primary,button');f&&f.focus()}
+function hideCard(){modal.hidden=true}
+card.addEventListener('click',e=>{const b=e.target.closest('[data-go]');if(!b||b.disabled)return;go(b.dataset.go)});
+function go(where){
+  if(where==='menu')return showMenu();
+  if(where==='rules')return showRules();
+  if(where==='t1'||where==='t2')return startStage(where);
+  if(where==='run'){newRun();return run.points>0?showTraits():startStage(run.stage)}
+  if(where==='continue'){return run?(S&&S.useTraits&&!S.over?hideCard():startStage(run.stage)):showMenu()}
+  if(where==='traits')return showTraits();
+  if(where==='play')return startStage(run.stage);
+  if(where==='close')return hideCard();
+  if(where.startsWith('buy:')){const id=where.slice(4),t=TRAITS.find(x=>x.id===id),l=rlv(id);if(run&&l<t.max&&run.points>=t.cost){run.points-=t.cost;run.traits[id]=l+1}return showTraits()}
+}
+function showMenu(){
+  const tp=(meta.t1?1:0)+(meta.t2?1:0);
+  const inRun=run&&S&&S.useTraits&&!S.over;
+  showCard(`<div class="eyebrow">추격 · 디펜스 · 로그라이트</div><h1>숲길 도주</h1>
+    <p>한 턴에 3칸씩 숲을 헤치며 달아나세요. 지나간 자리엔 흔적이 남고, 정찰병은 그 흔적을 베어 길을 냅니다. 그 길로 병사들이 몰려옵니다.</p>
+    <div class="menu-list">
+      ${inRun?`<button class="menu-item" data-go="continue" type="button"><b>이어하기</b><span>${run.stage}스테이지 진행 중</span><em></em></button>`:''}
+      <button class="menu-item" data-go="t1" type="button"><b>튜토리얼 1 · 첫 걸음</b><span>2턴 동안 일직선으로 걸어 오른쪽 끝에 도착하기</span><em>${meta.t1?'완료 +1P':'+1P'}</em></button>
+      <button class="menu-item" data-go="t2" type="button"><b>튜토리얼 2 · 따라오는 정찰병</b><span>10×5 숲에서 한 번도 공격당하지 않고 오른쪽 끝 도착</span><em>${meta.t2?'완료 +1P':'+1P'}</em></button>
+      <button class="menu-item" data-go="run" type="button"><b>${run?'새 런 시작':'런 시작 · 3스테이지'}</b><span>무한의 숲. 간격 20칸, 또는 간격 10칸 유지 + 웨이브 3개 저지. 시작 포인트 ${tp}</span><em>${meta.best?`최고 ${meta.best}스테이지`:''}</em></button>
+    </div>
+    <div class="row"><button class="btn" data-go="rules" type="button">전체 규칙</button>${S&&!S.over?'<button class="btn" data-go="close" type="button">닫기</button>':''}</div>`);
+}
+function showRules(){
+  showCard(`<div class="eyebrow">규칙</div><h2>숲길 도주의 규칙</h2>
+    <ul class="rules">
+      <li><b>이동</b> 한 턴에 ${RULES.playerMove}칸. 덤불은 ${RULES.thicketMoveCost}칸 몫, 바위는 못 지나갑니다. 지나간 칸에는 <b>흔적</b>이 남습니다.</li>
+      <li><b>적은 흔적과 길로만</b> 다닙니다. 플레이어까지의 최단 경로를 따라옵니다.</li>
+      <li><b>행동력 ${RULES.enemyAP}</b> 적은 1을 써서 길 1칸을 이동하거나, 흔적 1칸을 파괴합니다. 파괴된 흔적은 <b>길</b>이 됩니다. 덤불 흔적은 파괴에 2가 듭니다.</li>
+      <li><b>직진 보너스</b> 길이 직선으로 ${RULES.straightLen}칸 이어져 있으면 그 턴엔 ${RULES.straightLen}칸을 이동합니다. 굽은 길이 안전합니다.</li>
+      <li><b>정찰병</b>이 먼저 흔적을 베어 길을 만들고, <b>웨이브 병사</b>는 그 길로 옵니다. 이미 길이 된 칸은 파괴 비용이 없습니다.</li>
+      <li><b>공격</b> 정찰병·보병은 겹친 칸(플레이어 칸으로 들어올 때)에서만 공격합니다. 창병은 십자 1칸, 궁수는 십자 2칸 거리에서 공격합니다. 바위는 사선을 막습니다.</li>
+      <li><b>승리</b> 튜토리얼은 오른쪽 끝 도착. 3스테이지부터는 정찰병과의 간격 ${RULES.winGap}칸, 또는 간격 ${RULES.defGap}칸 이상인 상태에서 웨이브 ${RULES.defWaves}개 저지.</li>
+      <li><b>특성</b> 튜토리얼마다 1포인트, 스테이지 클리어마다 1포인트. 3스테이지부터 특성 페이지를 쓸 수 있습니다. 런에서 쓰러지면 특성은 초기화됩니다.</li>
+      <li><b>아군</b> 덫은 밟은 병사를 쓰러뜨리고 정찰병을 2턴 묶습니다. 아군 창병(십자 1)·궁수(십자 2)는 적 턴마다 사거리 안 적 하나를 공격합니다.</li>
+      <li><b>미리보기</b> 점선은 이번 턴을 끝냈을 때 적이 갈 경로, 주황 테두리는 파괴될 흔적, 붉은 칸은 원거리 공격 범위입니다.</li>
+    </ul>
+    <div class="row"><button class="btn primary" data-go="${S&&!S.over?'close':'menu'}" type="button">${S&&!S.over?'계속하기':'메뉴로'}</button></div>`,true);
+}
+function showTraits(){
+  if(!run)return showMenu();
+  const cards=TRAITS.map(t=>{const l=rlv(t.id),can=l<t.max&&run.points>=t.cost;
+    return `<div class="trait"><div class="th"><b>${t.name}</b><span class="lv">${Array.from({length:t.max},(_,i)=>`<i class="${i<l?'on':''}"></i>`).join('')}</span></div>
+      <p>${t.desc(l)}</p><button class="btn" data-go="buy:${t.id}" type="button" ${can?'':'disabled'}>${l>=t.max?'최대':`배우기 · ${t.cost}P`}</button></div>`}).join('');
+  showCard(`<div class="eyebrow">특성 페이지 · ${run.stage}스테이지 준비</div>
+    <div class="row" style="justify-content:space-between;align-items:center"><h2>특성</h2><span class="points">보유 <b>${run.points}</b>P</span></div>
+    <p class="muted">이동을 늘려 도망칠지, 덫과 병사로 웨이브를 막을지 고르세요. 런이 끝나면 초기화됩니다.</p>
+    <div class="traits">${cards}</div>
+    <div class="row"><button class="btn primary" data-go="play" type="button">${run.stage}스테이지 시작</button><button class="btn" data-go="menu" type="button">메뉴</button></div>`,true);
+}
+function intro(){
+  const id=S.id;let body='';
+  if(id==='t1')body=`<p>한 턴에 <b>3칸</b>까지 걸을 수 있어요. 방향키(또는 WASD)나 주인공 옆 칸을 눌러 이동하세요. 걸어간 칸에는 흔적이 남습니다.</p><p>2턴 동안 오른쪽으로 곧장 걸어 <b>초록 점선</b>에 도착하면 클리어입니다.</p>`;
+  else if(id==='t2')body=`<p>정찰병이 당신의 <b>흔적</b>을 따라옵니다. 적은 행동력 3을 써서 길을 1칸 걷거나, 흔적 1칸을 부숴 길로 만듭니다. 길이 직선으로 4칸 이어지면 4칸을 걷습니다.</p><p>점선은 적의 다음 경로 예측입니다. 덤불은 2칸 몫, 바위는 막혀 있어요. <b>한 번도 공격당하지 않고</b> 오른쪽 끝에 도착하세요.</p>`;
+  else{
+    const n=id,news=n===4?`<p><b>새 적: 창병</b> 십자 1칸 거리에서 공격합니다.</p>`:n===5?`<p><b>새 적: 궁수</b> 십자 2칸 거리에서 공격, 이동은 2칸입니다.</p>`:'';
+    body=`<p>무한의 숲. 정찰병과의 간격을 <b>${RULES.winGap}칸</b> 벌리거나, 간격 <b>${RULES.defGap}칸</b> 이상을 지키며 웨이브 <b>${RULES.defWaves}개</b>를 막으면 승리합니다.</p>
+      <p>${S.cfg.firstWave}턴째부터 웨이브 병사가 정찰병이 낸 길로 옵니다. 덫과 아군 병사는 아래 버튼으로 배치하세요.</p>${news}
+      <p class="muted">시작 체력 ${S.player.maxHp} · 이동 ${moveMax(S)}칸 · 덫 ${S.items.trap} · 창병 ${S.items.spear} · 궁수 ${S.items.archer} · 바리케이드 ${S.items.barricade} · 연막 ${S.items.smoke}</p>`;
+  }
+  showCard(`<div class="eyebrow">${S.name}</div><h2>${S.sub}</h2>${body}<div class="row"><button class="btn primary" data-go="close" type="button">시작</button><button class="btn" data-go="menu" type="button">메뉴</button></div>`);
+}
+function startStage(id){
+  S=makeStage(id);place=null;smokeArmed=false;busy=false;
+  S.log=[];log(id==='t1'?'오른쪽으로 걸어가세요':id==='t2'?'정찰병이 흔적을 쫓기 시작합니다':`${S.name} 시작 · 정찰병이 숲을 베며 다가옵니다`);
+  resize();render(true);intro();
+}
+
+/* ================= RENDER ================= */
+const svg=$('#board'),world=$('#world');
+function resize(){
+  if(!S)return;
+  const w=$('#bw').clientWidth||800;
+  let vc=Math.max(7,Math.min(17,Math.floor(w/54)));
+  if(S.cols!==Infinity)vc=Math.min(vc,S.cols);
+  VC=vc;svg.setAttribute('viewBox',`0 0 ${VC*CELL} ${S.rows*CELL}`);
+  render(true);
+}
+function updateCam(instant){
+  const P=S.player;let cx=P.c-Math.floor(VC*0.45);
+  cx=Math.max(0,cx);if(S.cols!==Infinity)cx=Math.min(cx,Math.max(0,S.cols-VC));
+  camX=cx;
+  world.style.transition=instant||RM?'none':'transform .28s ease';
+  world.style.transform=`translate(${-camX*CELL}px,${SURF}px)`;
+}
+function cellSVG(c,r){
+  const k=K(c,r),t=S.terr[k],x=c*CELL,y=r*CELL,h=hash2(c,r,11),h2=hash2(c,r,29);
+  let s=`<rect x="${x}" y="${y}" width="${CELL}" height="${CELL}" class="floor"/>`;
+  const tr=S.trail[k]>0;
+  if(t==='road'){
+    s+=`<rect x="${x}" y="${y}" width="${CELL}" height="${CELL}" class="rd"/>`;
+    s+=`<circle cx="${x+8+h*30}" cy="${y+10+h2*28}" r="1.8" class="rd2" /><circle cx="${x+14+h2*24}" cy="${y+30-h*14}" r="1.4" class="rd2"/>`;
+  }else if(t==='rock'){
+    const o=h*6;
+    s+=`<path d="M${x+8+o} ${y+34} L${x+12} ${y+14+o} L${x+26} ${y+7} L${x+40-o} ${y+15} L${x+42} ${y+33} L${x+28} ${y+42} Z" class="rk"/>`;
+    s+=`<path d="M${x+14} ${y+16+o} L${x+26} ${y+10} L${x+36-o} ${y+17} L${x+26} ${y+22} Z" class="rk2"/>`;
+  }else if(tr){
+    s+=`<rect x="${x+4}" y="${y+4}" width="${CELL-8}" height="${CELL-8}" rx="10" class="trl"/>`;
+    s+=`<ellipse cx="${x+18}" cy="${y+20+h*4}" rx="3" ry="4.5" class="prt"/><ellipse cx="${x+30}" cy="${y+28-h*4}" rx="3" ry="4.5" class="prt"/>`;
+    if(t==='thicket')s+=`<path d="M${x+6} ${y+40} q6 -8 12 0 M${x+32} ${y+10} q6 -6 10 2" class="bram"/>`;
+  }else if(t==='thicket'){
+    s+=`<rect x="${x}" y="${y}" width="${CELL}" height="${CELL}" class="thk"/>`;
+    s+=`<path d="M${x+6} ${y+14} q8 -10 16 0 q8 10 16 0 M${x+8} ${y+30} q7 -9 14 0 q8 9 18 -2 M${x+10} ${y+42} q8 -7 18 0" class="bram"/>`;
+  }else{
+    const r1=13+h*5,r2=9+h2*5;
+    s+=`<circle cx="${x+16+h*6}" cy="${y+18+h2*6}" r="${r1}" class="leaf"/>`;
+    s+=`<circle cx="${x+32-h2*4}" cy="${y+31-h*4}" r="${r2}" class="leaf3"/>`;
+    s+=`<circle cx="${x+13+h*6}" cy="${y+14+h2*6}" r="${r1*.45}" class="leaf2"/>`;
+  }
+  if(S.barr[k]){
+    s+=`<rect x="${x+5}" y="${y+14}" width="${CELL-10}" height="8" rx="4" class="log1"/><rect x="${x+5}" y="${y+26}" width="${CELL-10}" height="8" rx="4" class="log1"/>`;
+  }
+  const hp=S.trail[k]||0;
+  if(hp>0&&(hp>1||S.barr[k])){for(let i=0;i<hp;i++)s+=`<circle cx="${x+CELL-8-i*7}" cy="${y+7}" r="2.6" class="hpdot"/>`}
+  return s;
+}
+function entSVG(type){
+  if(type==='player')return `<circle cx="24" cy="24" r="15" class="pl-hood"/><circle cx="24" cy="25" r="10" class="pl-body"/><circle cx="35" cy="15" r="4.5" class="pl-body"/><path d="M31 19 L35 15" class="ink"/>`;
+  const cls='e-'+type;
+  let s=`<circle cx="24" cy="24" r="14" class="${cls}"/><circle cx="19.5" cy="22" r="2.6" class="eye"/><circle cx="28.5" cy="22" r="2.6" class="eye"/>`;
+  if(type==='scout')s=`<path d="M24 6 L38 28 Q24 40 10 28 Z" class="${cls}"/><circle cx="20" cy="24" r="2.4" class="eye"/><circle cx="28" cy="24" r="2.4" class="eye"/><path d="M36 34 L44 42 M40 32 L44 38" class="ink"/>`;
+  if(type==='inf')s+=`<rect x="8" y="26" width="12" height="14" rx="3" class="${cls}" style="stroke:#1b120c;stroke-width:2"/>`;
+  if(type==='spear')s+=`<path d="M38 40 L42 6 M38 12 L42 6 L45 11" class="ink"/>`;
+  if(type==='archer')s+=`<path d="M38 8 Q48 24 38 40" class="ink"/><path d="M38 8 L38 40" class="ink" style="stroke-width:1"/>`;
+  return s;
+}
+function unitSVG(u,x,y){
+  const sh=`<path d="M${x+24} ${y+8} L${x+38} ${y+14} L${x+36} ${y+30} Q${x+24} ${y+42} ${x+12} ${y+30} L${x+10} ${y+14} Z" class="ally"/>`;
+  const mark=u.type==='spear'?`<path d="M${x+24} ${y+36} L${x+24} ${y+14} M${x+19} ${y+19} L${x+24} ${y+13} L${x+29} ${y+19}" class="allyink"/>`
+    :`<path d="M${x+19} ${y+14} Q${x+32} ${y+24} ${x+19} ${y+34}" class="allyink"/><path d="M${x+19} ${y+14} L${x+19} ${y+34}" class="allyink" style="stroke-width:1"/>`;
+  return sh+mark;
+}
+const entEls=new Map();
+function renderEnts(){
+  const layer=$('#ents'),seen=new Set();
+  const list=[{id:'P',type:'player',c:S.player.c,r:S.player.r,alive:true,stun:0},...S.enemies];
+  // offset stacked enemies a bit
+  const stack={};
+  for(const e of list){
+    let el=entEls.get(e.id);
+    if(!e.alive){if(el&&!el.classList.contains('dead')){el.classList.add('dead');const ref=el;setTimeout(()=>{ref.remove();entEls.delete(e.id)},320)}continue}
+    seen.add(e.id);
+    if(!el){el=document.createElementNS('http://www.w3.org/2000/svg','g');el.setAttribute('class','ent');el.innerHTML=`<g class="body">${entSVG(e.type)}</g><text class="zz" x="34" y="10">zz</text>`;layer.appendChild(el);entEls.set(e.id,el);
+      el.style.transition='none';requestAnimationFrame(()=>{el.style.transition=''})}
+    const sk=K(e.c,e.r),n=stack[sk]=(stack[sk]||0)+1,off=(n-1)*6;
+    el.style.transform=`translate(${e.c*CELL+off}px,${e.r*CELL-off}px)`;
+    el.classList.toggle('stun',e.stun>0);
+  }
+  for(const [id,el] of entEls){if(!seen.has(id)&&!el.classList.contains('dead')){el.remove();entEls.delete(id)}}
+  const pe=entEls.get('P');if(pe)layer.appendChild(pe);
+}
+function computePreview(){
+  if(!S||S.over||busy)return null;
+  const trail=Object.assign({},S.trail),maze=lv('zigzag')>0,res=[];
+  if(smokeArmed)return {list:[],hit:false,smoke:true};
+  const cf=costField();
+  const order=S.enemies.filter(e=>e.alive).sort((a,b)=>(cf.get(K(a.c,a.r))??999)-(cf.get(K(b.c,b.r))??999));
+  let hit=false;
+  for(const e of order){
+    if(e.stun>0){res.push({e,acts:[],stun:true});continue}
+    const p=planEnemy(e,trail,maze);res.push({e,acts:p.acts,straight:p.straight});
+    if(p.acts.some(a=>a.t==='atk'))hit=true;
+  }
+  return {list:res,hit};
+}
+function renderMarks(){
+  const P=S.player;let s='';
+  if(S.goal.type==='reach'){const gx=S.goal.col*CELL;s+=`<rect x="${gx}" y="0" width="${CELL}" height="${S.rows*CELL}" class="goal"/><line x1="${gx+2}" y1="0" x2="${gx+2}" y2="${S.rows*CELL}" class="goalline"/>`}
+  const pv=preview;
+  if(pv){
+    // ranged danger zones (from predicted end positions)
+    for(const it of pv.list){
+      const def=EDEF[it.e.type];if(def.range<=0)continue;
+      let end={c:it.e.c,r:it.e.r};for(const a of it.acts)if(a.t==='mv')end={c:a.c,r:a.r};
+      for(const [dx,dy] of DIRS)for(let i=1;i<=def.range;i++){const c=end.c+dx*i,r=end.r+dy*i;if(terr(c,r)===null||terr(c,r)==='rock')break;s+=`<rect x="${c*CELL+2}" y="${r*CELL+2}" width="${CELL-4}" height="${CELL-4}" rx="6" class="danger"/>`}
+    }
+    for(const it of pv.list){
+      const col=`var(--${it.e.type})`;let pts=[[it.e.c*CELL+24,it.e.r*CELL+24]];
+      for(const a of it.acts){
+        if(a.t==='mv'){pts.push([a.c*CELL+24,a.r*CELL+24]);s+=`<circle cx="${a.c*CELL+24}" cy="${a.r*CELL+24}" r="4" class="pvdot" style="fill:${col}"/>`}
+        if(a.t==='brk')s+=`<rect x="${a.c*CELL+6}" y="${a.r*CELL+6}" width="${CELL-12}" height="${CELL-12}" rx="8" class="pvbrk" style="stroke:var(--spear)"/>`;
+        if(a.t==='atk'){const x=P.c*CELL,y=P.r*CELL;s+=`<path d="M${x+8} ${y+8} L${x+40} ${y+40} M${x+40} ${y+8} L${x+8} ${y+40}" style="stroke:var(--bad);stroke-width:4;stroke-linecap:round;opacity:.85"/>`}
+      }
+      if(pts.length>1)s+=`<polyline points="${pts.map(p=>p.join(',')).join(' ')}" class="pv" style="stroke:${col}"/>`;
+    }
+  }
+  if(!busy&&!S.over){
+    if(place&&place!=='smoke'){
+      for(let c=Math.floor(camX);c<=Math.floor(camX)+VC;c++)for(let r=0;r<S.rows;r++)if(canPlace(place,c,r))s+=`<rect x="${c*CELL+3}" y="${r*CELL+3}" width="${CELL-6}" height="${CELL-6}" rx="7" class="pl-ok"/>`;
+    }else if(S.ap>0){
+      DIRS.forEach(([dx,dy])=>{const c=P.c+dx,r=P.r+dy,t=terr(c,r);if(!t||t==='rock'||enemyAt(c,r))return;
+        const k=K(c,r),onPath=t==='road'||S.trail[k]>0,cost=(!onPath&&t==='thicket')?thkCost():1;if(cost>S.ap)return;
+        s+=`<rect x="${c*CELL+3}" y="${r*CELL+3}" width="${CELL-6}" height="${CELL-6}" rx="7" class="mv"/>`;
+        if(cost>1)s+=`<text x="${c*CELL+24}" y="${r*CELL+28}" class="mvt">${cost}</text>`;});
+    }
+  }
+  // traps & allied units
+  let it='';
+  for(const k in S.traps){const [c,r]=k.split(',').map(Number),x=c*CELL+24,y=r*CELL+24;it+=`<circle cx="${x}" cy="${y}" r="10" class="trapc"/>`;for(let i=0;i<6;i++){const a=i*Math.PI/3;it+=`<circle cx="${x+Math.cos(a)*10}" cy="${y+Math.sin(a)*10}" r="2.4" class="trapt"/>`}}
+  for(const k in S.units){const [c,r]=k.split(',').map(Number);it+=unitSVG(S.units[k],c*CELL,r*CELL)}
+  $('#items').innerHTML=it;
+  // off-screen enemies indicator
+  let hud='';const left={},right={};
+  for(const e of S.enemies){if(!e.alive)continue;if(e.c<camX)(left[e.r]=left[e.r]||[]).push(e);}
+  for(const r in left){const n=left[r].length,y=r*CELL+12;hud+=`<rect x="4" y="${y}" width="${n>1?62:44}" height="24" rx="12" class="offchip"/><text x="14" y="${y+17}" class="offtxt">◀ ${n>1?n+'명':EDEF[left[r][0].type].name.slice(0,2)}</text>`}
+  $('#hudl').innerHTML=hud;
+  $('#marks').innerHTML=s;
+}
+function renderTerrain(){
+  const c0=Math.max(0,Math.floor(camX)-3),c1=Math.min(S.cols-1,Math.floor(camX)+VC+3);
+  ensureCols(S,c1);let h='';
+  for(let c=c0;c<=c1;c++)for(let r=0;r<S.rows;r++)h+=cellSVG(c,r);
+  $('#terrain').innerHTML=h;
+  const d=$('#dark');d.setAttribute('x',c0*CELL);d.setAttribute('y',0);d.setAttribute('width',(c1-c0+1)*CELL);d.setAttribute('height',S.rows*CELL);
+  const g=$('#lampG');g.setAttribute('cx',S.player.c*CELL+24);g.setAttribute('cy',S.player.r*CELL+24);g.setAttribute('r',CELL*7);
+}
+function pips(n,max,cls){let s='';for(let i=0;i<max;i++)s+=`<i class="pip ${cls||''} ${i<n?'on':''}"></i>`;return s}
+function renderHud(){
+  $('#stName').textContent=S.name;$('#stSub').textContent=S.sub+(run&&S.useTraits?` · 포인트 ${run.points}`:'');
+  $('#turnNo').textContent=S.turn+(S.goal.maxTurns?` / ${S.goal.maxTurns}`:'');
+  $('#hp').innerHTML=pips(S.player.hp,S.player.maxHp,'hp');
+  $('#ap').innerHTML=pips(S.ap,moveMax(S));
+  const fill=$('#mFill'),ghost=$('#mGhost'),tick=$('#tickDef');
+  const pv=preview,warn=pv&&pv.hit?`<span class="warn">이대로 끝내면 공격당합니다</span>`:pv&&pv.smoke?'<span class="muted">연막 준비됨</span>':'';
+  if(S.goal.type==='reach'){
+    const left=Math.max(0,S.goal.col-S.player.c);
+    $('#mText').innerHTML=`도착까지 <b>${left}</b>칸`;$('#mPred').innerHTML=warn;
+    fill.style.width=(100*S.player.c/S.goal.col)+'%';ghost.style.width='0';tick.hidden=true;
+    $('#mSub').textContent=S.id==='t1'?'오른쪽 끝 초록 점선이 목표입니다.':'점선: 적의 다음 경로 · 주황 테두리: 부서질 흔적';
+  }else{
+    const g=gapInfo().gap,G=S.goal.gap;
+    let pg=g;
+    if(pv){const cf=cellField();for(const it of pv.list){if(it.e.type!=='scout')continue;let end={c:it.e.c,r:it.e.r};for(const a of it.acts)if(a.t==='mv')end=a;
+      // trail breaks don't change cell distance; moves do
+      pg=cf.get(K(end.c,end.r))??g;}}
+    $('#mText').innerHTML=`정찰병과의 간격 <b>${g===Infinity?'-':g}</b> / ${G}칸`;
+    $('#mPred').innerHTML=warn||(pv&&!pv.smoke?`<span class="muted">적 이동 후 <b>${pg}</b>칸</span>`:'');
+    fill.style.width=Math.min(100,100*pg/G)+'%';ghost.style.width=Math.min(100,100*g/G)+'%';
+    tick.hidden=false;tick.style.left=(100*S.goal.def/G)+'%';
+    const aliveW=S.enemies.filter(e=>e.alive&&e.wave).length+S.spawnQ.length;
+    const nextW=S.spawnQ.length?'진군 중':(S.nextWaveTurn<Infinity?`${Math.max(0,S.nextWaveTurn-S.turn)}턴 후`:'');
+    $('#mSub').innerHTML=`웨이브 저지 <b>${S.blocked}</b> / ${S.goal.waves} · 남은 병사 ${aliveW} · 다음 웨이브 ${nextW} · 파란 눈금 = 디펜스 조건 ${S.goal.def}칸`;
+  }
+  // items
+  const ib=$('#itemBtns');
+  if(S.useTraits){ib.innerHTML=ITEMS.map(i=>`<button class="btn ${place===i.id||(i.id==='smoke'&&smokeArmed)?'on':''}" data-item="${i.id}" type="button" ${S.items[i.id]>0&&!busy&&!S.over?'':'disabled'}>${i.name} <span class="n">${S.items[i.id]}</span> <kbd>${i.key}</kbd></button>`).join('')}
+  else ib.innerHTML='';
+  $('#undoBtn').disabled=busy||S.over;$('#endBtn').disabled=busy||S.over;
+  $('#endBtn').firstChild.textContent=busy?'적의 턴… ':'턴 종료 ';
+}
+function renderLegend(){
+  const types=new Set(['scout']);
+  if(S.useTraits){S.waves.flat().forEach(t=>types.add(t))}
+  let h=`<div class="lg"><svg viewBox="0 0 48 48">${entSVG('player')}</svg><div><b>나</b>한 턴 ${moveMax(S)}칸. 지나간 칸에 흔적을 남깁니다.</div></div>`;
+  if(S.id!=='t1')for(const t of types)h+=`<div class="lg"><svg viewBox="0 0 48 48">${entSVG(t)}</svg><div><b>${EDEF[t].name}</b>${EDEF[t].desc}</div></div>`;
+  if(S.useTraits)h+=`<div class="lg"><svg viewBox="0 0 48 48">${unitSVG({type:'spear'},0,0)}</svg><div><b>아군 창병·궁수</b>사거리 십자 1·2칸. 적 턴마다 한 번 공격합니다.</div></div>`;
+  $('#legend').innerHTML=h;
+}
+function renderLog(){$('#log').innerHTML=S?S.log.slice(0,12).map(m=>`<li>${m}</li>`).join(''):''}
+function render(instant){
+  if(!S)return;
+  updateCam(instant);
+  preview=computePreview();
+  renderTerrain();renderMarks();renderEnts();renderHud();renderLegend();renderLog();
+}
+let toastT=0;
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),1800)}
+
+/* ================= INPUT ================= */
+svg.addEventListener('click',ev=>{
+  if(!S||busy||S.over)return;
+  const pt=svg.createSVGPoint();pt.x=ev.clientX;pt.y=ev.clientY;const m=svg.getScreenCTM();if(!m)return;
+  const loc=pt.matrixTransform(m.inverse());
+  const c=Math.floor((loc.x+camX*CELL)/CELL),r=Math.floor((loc.y-SURF)/CELL);
+  if(place&&place!=='smoke'){doPlace(c,r);return}
+  const P=S.player,dc=c-P.c,dr=r-P.r;
+  if(Math.abs(dc)+Math.abs(dr)===1){tryStep(DIRS.findIndex(d=>d[0]===dc&&d[1]===dr))}
+});
+document.addEventListener('keydown',ev=>{
+  if(!modal.hidden){if(ev.key==='Escape'&&S&&!S.over)hideCard();return}
+  if(!S)return;
+  const map={ArrowRight:0,d:0,D:0,ArrowDown:1,s:1,S:1,ArrowLeft:2,a:2,A:2,ArrowUp:3,w:3,W:3};
+  if(ev.key in map){ev.preventDefault();tryStep(map[ev.key]);return}
+  if(ev.key===' '||ev.key==='Enter'){if(ev.target.closest&&ev.target.closest('button')&&ev.key==='Enter')return;ev.preventDefault();endTurn();return}
+  if(ev.key==='z'||ev.key==='Z'||ev.key==='Backspace'){ev.preventDefault();undo();return}
+  if(ev.key==='Escape'){place=null;if(smokeArmed){smokeArmed=false}render();return}
+  const it=ITEMS.find(i=>i.key===ev.key);if(it)selectItem(it.id);
+});
+$('#itemBtns').addEventListener('click',e=>{const b=e.target.closest('[data-item]');if(b)selectItem(b.dataset.item)});
+$('#endBtn').addEventListener('click',endTurn);
+$('#undoBtn').addEventListener('click',undo);
+$('#menuBtn').addEventListener('click',showMenu);
+$('#rulesBtn').addEventListener('click',showRules);
+let rT=0;addEventListener('resize',()=>{clearTimeout(rT);rT=setTimeout(resize,120)});
+
+/* ================= BOOT ================= */
+// a live stage sits behind the menu so the first frame shows the game
+newRun();run.points=0;S=makeStage(3);run=null;S.useTraits=false;
+S.log=['메뉴에서 튜토리얼이나 런을 시작하세요'];
+resize();
+showMenu();
+window.__game={get S(){return S},get run(){return run},tryStep,endTurn,startStage,go,undo,selectItem,doPlace};
+})();
+</script>
+</body>
+</html>
